@@ -58,7 +58,7 @@ export class AppComponent implements OnInit, AfterViewInit {
 
   start_game() {
     this.game = new Game();
-    $(document).keydown(function (e) {
+    $(document).keydown((e) => {
       var arrow_key = this.get_arrow_key(e);
       if (arrow_key) {
         e.preventDefault();
@@ -256,7 +256,7 @@ export class AppComponent implements OnInit, AfterViewInit {
 
   draw_cars() {
     for (var i = 0; i < this.cars.length; i++) {
-      this.cars[i].move();
+      this.cars[i].move(this.game.level);
       if (this.cars[i].out_of_bounds()) {
         this.cars[i] = this.make_car(this.cars[i].lane, null, this.cars[i].model);
       }
