@@ -3,6 +3,8 @@ import * as $ from 'jquery';
 import { Log } from './models/Log';
 import { Car } from './models/Car';
 import { Game } from './models/Game';
+import { UserActions } from './services/UserActions';
+import { GameSetup } from './services/GameSetup';
 
 @Component({
   selector: 'app-root',
@@ -20,26 +22,12 @@ export class AppComponent implements OnInit, AfterViewInit {
     setInterval(() => { this.game_loop(); }, 50);
   }
   title = 'app';
+  gameSetup = new GameSetup();
 
   constructor() {
-    this.models = [
-      { width: 30, height: 22, dir: 1 },
-      { width: 29, height: 24, dir: -1 },
-      { width: 24, height: 26, dir: 1 },
-      { width: 24, height: 21, dir: -1 },
-      { width: 46, height: 19, dir: 1 }
-    ];
-    this.lengths = [{ width: 179, height: 21 }, { width: 118, height: 21 }, { width: 85, height: 22 }];
-    this.rows = [473, 443, 413, 383, 353, 323, 288, 261, 233, 203, 173, 143, 113];
+    this.setupSkeleton();
     this.game = new Game();
-    this.theme = document.createElement('audio');
-    this.theme.setAttribute('src', 'assets/frogger.mp3');
-    this.theme.setAttribute('loop', 'true');
-    this.theme.play();
-    this.logs = null;
-    this.cars = null;
-    this.sprites = new Image();
-    this.deadsprite = new Image();
+    this.setAudioTheme();
   }
 
   models = [];
@@ -52,44 +40,35 @@ export class AppComponent implements OnInit, AfterViewInit {
   highscore: number;
   logs = null;
   cars = null;
-
   sprites = null;
   deadsprite = null;
+  userActions = new UserActions();
 
   start_game() {
-    this.game = new Game();
     $(document).keydown((e) => {
-      var arrow_key = this.get_arrow_key(e);
+      var arrow_key = this.userActions.get_arrow_key(e);
       if (arrow_key) {
         e.preventDefault();
       }
       if (this.game.dead === -1 && this.game.lives > 0) {
         if (arrow_key === 'u') {
-          this.up();
+          this.userActions.up(this.bounds_check, this.game);
         } else if (arrow_key === 'd') {
-          this.down();
+          this.userActions.down(this.bounds_check, this.game);
         } else if (arrow_key === 'l') {
-          this.left();
+          this.userActions.left(this.bounds_check, this.game);
         } else if (arrow_key === 'r') {
-          this.right();
+          this.userActions.right(this.bounds_check, this.game);
         }
       }
     });
-    // this.board = document.getElementById('game');
-    // this.context = this.board.getContext('2d');
-    // this.theme = document.createElement('audio');
-    // this.theme.setAttribute('src', 'assets/frogger.mp3');
-    // this.theme.setAttribute('loop', 'true');
-    // this.theme.play();
-    // this.sprites = new Image();
-    // this.deadsprite = new Image();
     this.sprites.src = 'assets/frogger_sprites.png';
     this.deadsprite.src = 'assets/dead_frog.png';
     this.sprites.onload = (() => {
       this.draw_bg();
       this.draw_info();
-      this.make_cars();
-      this.make_logs();
+      this.cars = this.gameSetup.make_cars(this.rows);
+      this.logs = this.gameSetup.make_logs(this.rows);
       this.draw_frog();
     });
   };
@@ -108,25 +87,12 @@ export class AppComponent implements OnInit, AfterViewInit {
   };
 
 
-  get_arrow_key(e) {
-    /* 
-    Args:
-        e -- event
-  
-    Returns: the name of the arrow key that was pressed when a key is pressed or null.
-    */
-    switch (e.keyCode) {
-      case 37:
-        return 'l';
-      case 38:
-        return 'u';
-      case 39:
-        return 'r';
-      case 40:
-        return 'd';
-    }
-    return null;
-  };
+  setAudioTheme() {
+    this.theme = document.createElement('audio');
+    this.theme.setAttribute('src', 'assets/frogger.mp3');
+    this.theme.setAttribute('loop', 'true');
+    this.theme.play();
+  }
 
   //drawer functions: bg, info, frogger, cars, logs, wins
   draw_bg() {
@@ -207,7 +173,7 @@ export class AppComponent implements OnInit, AfterViewInit {
     else {
       if (this.game.log >= 0) {
         var tempX = this.game.posX - (this.logs[this.game.log].dir * this.logs[this.game.log].speed);
-        if (this.bounds_check(tempX, this.game.posY)) {
+        if (this.bounds_check(tempX, this.game.posY, this.game)) {
           this.game.posX = tempX;
         }
       }
@@ -258,7 +224,7 @@ export class AppComponent implements OnInit, AfterViewInit {
     for (var i = 0; i < this.cars.length; i++) {
       this.cars[i].move(this.game.level);
       if (this.cars[i].out_of_bounds()) {
-        this.cars[i] = this.make_car(this.cars[i].lane, null, this.cars[i].model);
+        this.cars[i] = this.gameSetup.make_car(this.rows, this.cars[i].lane, null, this.cars[i].model);
       }
       this.cars[i].draw(this.context, this.sprites);
     }
@@ -268,7 +234,7 @@ export class AppComponent implements OnInit, AfterViewInit {
     for (var i = 0; i < this.logs.length; i++) {
       this.logs[i].move();
       if (this.logs[i].out_of_bounds()) {
-        this.logs[i] = this.make_log(this.logs[i].row)
+        this.logs[i] = this.gameSetup.make_log(this.rows, this.logs[i].row)
       }
       this.logs[i].draw(this.context, this.sprites);
     }
@@ -288,46 +254,13 @@ export class AppComponent implements OnInit, AfterViewInit {
     }
   };
 
-
-  //move
-  up() {
-    if (this.bounds_check(this.game.posX, this.game.posY - 30)) {
-      this.game.posY -= 30;
-      this.game.current++;
-    }
-    if (this.game.current > this.game.highest) {
-      this.game.score += 10;
-      this.game.highest++;
-    }
-    this.game.facing = 'u';
-  };
-
-  down() {
-    if (this.bounds_check(this.game.posX, this.game.posY + 30)) {
-      this.game.posY += 30;
-      this.game.current--;
-    }
-    this.game.facing = 'd';
-  };
-
-  left() {
-    if (this.bounds_check(this.game.posX - 30, this.game.posY)) this.game.posX -= 30;
-    this.game.facing = 'l';
-  };
-
-  right() {
-    if (this.bounds_check(this.game.posX + 30, this.game.posY)) this.game.posX += 30;
-    this.game.facing = 'r';
-  };
-
-
-  bounds_check(x, y) {
+  bounds_check(x, y, game) {
     if (y > 90 && y < 510 && x > 0 && x < 369) {
       return true;
     }
     else if (y > 60 && y < 100 && ((x > 5 && x < 40 && !this.game.won[0]) ||
-      (x > 92 && x < 128 && !this.game.won[1]) || (x > 178 && x < 214 && !this.game.won[2]) ||
-      (x > 263 && x < 299 && !this.game.won[3]) || (x > 347 && x < 383 && !this.game.won[4]))) {
+      (x > 92 && x < 128 && !game.won[1]) || (x > 178 && x < 214 && !game.won[2]) ||
+      (x > 263 && x < 299 && !game.won[3]) || (x > 347 && x < 383 && !game.won[4]))) {
       return true;
     }
     return false;
@@ -415,68 +348,17 @@ export class AppComponent implements OnInit, AfterViewInit {
     this.game.dead = 20;
   };
 
-  // object initializers - cars, logs
-  make_cars() {
-    this.cars = [
-      this.make_car(0),
-      this.make_car(0, 130, 3),
-      this.make_car(0, 260, 3),
-      this.make_car(1),
-      this.make_car(2),
-      this.make_car(2, 150, 0),
-      this.make_car(3, 200),
-      this.make_car(4),
-      this.make_car(5),
-      this.make_car(5, 80),
-      this.make_car(5, 240)
+  setupSkeleton() {
+    this.models = [
+      { width: 30, height: 22, dir: 1 },
+      { width: 29, height: 24, dir: -1 },
+      { width: 24, height: 26, dir: 1 },
+      { width: 24, height: 21, dir: -1 },
+      { width: 46, height: 19, dir: 1 }
     ];
-  };
-
-  make_car = function (row?, x?, model?) {
-    switch (row) {
-      case 0:
-        return new Car(x == null ? -25 : x, this.rows[row], row, 3, model == null ? 1 : model);
-      case 1:
-        return new Car(x == null ? 399 : x, this.rows[row], row, 2, model == null ? 0 : model);
-      case 2:
-        return new Car(x == null ? 399 : x, this.rows[row], row, 4, model == null ? 2 : model);
-      case 3:
-        return new Car(x == null ? -25 : x, this.rows[row], row, 3, model == null ? 3 : model);
-      case 4:
-        return new Car(x == null ? 399 : x, this.rows[row], row, 3, model == null ? 0 : model);
-      case 5:
-        return new Car(x == null ? 399 : x, this.rows[row], row, 4, model == null ? 4 : model);
-    }
-  };
-
-  make_logs() {
-    this.logs = [
-      this.make_log(7),
-      this.make_log(7, 170),
-      this.make_log(8),
-      this.make_log(8, 200),
-      this.make_log(9),
-      this.make_log(10),
-      this.make_log(11),
-      this.make_log(11, 100, 0),
-      this.make_log(12)
-    ];
-  };
-
-  make_log(row?, x?, len?) {
-    switch (row) {
-      case 7:
-        return new Log(x == null ? 399 : x, this.rows[row], row, 1, 1, len == null ? 1 : len);
-      case 8:
-        return new Log(x == null ? -85 : x, this.rows[row], row, 4, -1, len == null ? 2 : len);
-      case 9:
-        return new Log(x == null ? 399 : x, this.rows[row], row, 2, 1, len == null ? 0 : len);
-      case 10:
-        return new Log(x == null ? -85 : x, this.rows[row], row, 2, -1, len == null ? 1 : len);
-      case 11:
-        return new Log(x == null ? 399 : x, this.rows[row], row, 3, 1, len == null ? 1 : len);
-      case 12:
-        return new Log(x == null ? -85 : x, this.rows[row], row, 3, -1, len == null ? 2 : len);
-    }
-  };
+    this.lengths = [{ width: 179, height: 21 }, { width: 118, height: 21 }, { width: 85, height: 22 }];
+    this.rows = [473, 443, 413, 383, 353, 323, 288, 261, 233, 203, 173, 143, 113];
+    this.sprites = new Image();
+    this.deadsprite = new Image();
+  }
 }
